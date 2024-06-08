@@ -1,4 +1,4 @@
-# jira
-jira tools and tricks 
+# gitlab
+gitlab tools and tricks 
 
 [./auto-review](./auto-review)
