@@ -1,0 +1,60 @@
+import os
+import gitlab
+
+
+# Get the GitLab token from environment variables
+GITLAB_TOKEN = os.getenv('GITLAB_TOKEN')
+
+# GitLab automatically sets environment variables for each CI/CD job.
+#   - CI_PROJECT_ID        -> Project ID
+#   - CI_MERGE_REQUEST_IID -> Merge Request ID
+PROJECT_ID = os.getenv('CI_PROJECT_ID')
+MERGE_REQUEST_IID = os.getenv('CI_MERGE_REQUEST_IID')
+
+# Check if environment variables are available
+if not all([GITLAB_TOKEN, PROJECT_ID, MERGE_REQUEST_IID]):
+    raise EnvironmentError("Required environment variables are missing")
+
+
+# Create a GitLab instance
+gl = gitlab.Gitlab(
+    'https://gitlab.cee.DOMAIN.com',
+    private_token=GITLAB_TOKEN,
+    ssl_verify=False)  # Install IT certificate in the system and remove this line
+
+# Get the project
+project = gl.projects.get(PROJECT_ID)
+
+# Get the merge request
+merge_request = project.mergerequests.get(MERGE_REQUEST_IID)
+
+# Define your team assignees
+assignees = [
+    'USERNAME1',
+    'USERNAME2',
+]
+
+# Define your team reviewers
+reviewers = [
+    'USERNAME1',
+    'USERNAME2',
+]
+
+# Assignees
+merge_request.assignee_ids = [
+    gl.users.list(username=username)[0].id for username in assignees
+]
+
+# Reviewers
+merge_request.reviewer_ids = [
+    gl.users.list(username=username)[0].id for username in reviewers
+]
+
+# Add labels
+merge_request.labels += [
+    'needreview',
+    'podman',
+    'systemd'
+]
+
+merge_request.save()

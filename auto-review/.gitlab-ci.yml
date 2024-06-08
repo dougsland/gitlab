@@ -1,0 +1,15 @@
+assign_merge_request:
+  stage: deploy
+  script:
+    - dnf install python3-pip -y
+    - pip3 install python-gitlab
+    - pip3 install requests
+    - python3 scripts/assign_merge_request
+  only:
+    - merge_requests
+#
+# Example of tags
+#
+# tags:
+#   - linux
+#   - fedora
