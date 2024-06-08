@@ -153,4 +153,5 @@ To create a merge request for testbranch, visit:
 remote:   https://gitlab.cee.DOMAIN.com/dlandgra/validador-subsystem/-/merge_requests/new?merge_request%5Bsource_branch%5D=testbranch
 ```
 
-**PLEASE NOTE**: No need to set ASsignees or Reviewers, just select the Create merge request button. The CI/CD job will automatic set it for you as soon it's done.
+**PLEASE NOTE**  
+No need to set ASsignees or Reviewers, just select the Create merge request button. The CI/CD job will automatic set it for you as soon it's done.
