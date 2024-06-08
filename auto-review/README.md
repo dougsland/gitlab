@@ -154,4 +154,4 @@ remote:   https://gitlab.cee.DOMAIN.com/dlandgra/validador-subsystem/-/merge_req
 ```
 
 **PLEASE NOTE**  
-No need to set ASsignees or Reviewers, just select the Create merge request button. The CI/CD job will automatic set it for you as soon it's done.
+No need to set Assignees or Reviewers, just select the Create merge request button. The CI/CD job will automatic set it for you as soon it's done.
