@@ -22,7 +22,7 @@ write_registry (optional, if needed)
 k8s_proxy (optional, if needed)
 ai_features (optional, if needed)
 
-Click the Create personal access token button.
+Click the Create project access token button.
 Save Your Token.
 
 Once the token is created, GitLab will display it. Make sure to copy and save the token immediately. GitLab will not show it again.
