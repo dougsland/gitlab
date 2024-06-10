@@ -4,7 +4,7 @@ Log in to GitLab
 
 Click on your profile picture or avatar in the top right corner of the page. Select Settings from the dropdown menu. Access Tokens.
 
-In the Personal Access Tokens section, enter a name for your token in the Name field.
+In the Project Tokens section, enter a name for your token in the Name field.
 
 Set an expiration date for the token (optional but recommended).
 
