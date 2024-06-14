@@ -1,0 +1,101 @@
+import os
+import gitlab
+import fnmatch
+
+# Get the GitLab token from environment variables
+GITLAB_TOKEN = os.getenv('GITLAB_TOKEN')
+
+# GitLab automatically sets environment variables for each CI/CD job.
+#   - CI_PROJECT_ID        -> Project ID
+#   - CI_MERGE_REQUEST_IID -> Merge Request ID
+PROJECT_ID = os.getenv('CI_PROJECT_ID')
+MERGE_REQUEST_IID = os.getenv('CI_MERGE_REQUEST_IID')
+
+# Check if environment variables are available
+if not all([GITLAB_TOKEN, PROJECT_ID, MERGE_REQUEST_IID]):
+    raise EnvironmentError("Required environment variables are missing")
+
+# Create a GitLab instance
+gl = gitlab.Gitlab(
+    'https://gitlab.cee.DOMAIN.com',
+    private_token=GITLAB_TOKEN,
+    ssl_verify=False)  # Install IT certificate in the system and remove this line
+
+# Get the project
+project = gl.projects.get(PROJECT_ID)
+
+# Get the merge request
+merge_request = project.mergerequests.get(MERGE_REQUEST_IID)
+
+# Read CODEOWNERS file
+codeowners_path = '.gitlab/CODEOWNERS'
+if not os.path.exists(codeowners_path):
+    raise FileNotFoundError(f"{codeowners_path} not found")
+
+with open(codeowners_path, 'r') as file:
+    lines = file.readlines()
+
+# Parse CODEOWNERS file
+codeowners_rules = {}
+general_reviewers = []
+
+is_general_reviewers = False
+
+for line in lines:
+    line = line.strip()
+    if line and not line.startswith('#'):
+        if line.startswith('[') and 'General reviewers' in line:
+            is_general_reviewers = True
+        else:
+            parts = line.split()
+            pattern = parts[0]
+            users = parts[1:]
+            if is_general_reviewers:
+                general_reviewers.extend(users)
+            else:
+                codeowners_rules[pattern] = users
+
+default_assignee = "unused"
+
+# Function to find assignees and reviewers based on the file path
+def find_assignees_and_reviewers(file_path):
+    assignees = [default_assignee]
+    reviewers = general_reviewers[:]
+    
+    for pattern, users in codeowners_rules.items():
+        if fnmatch.fnmatch(file_path, pattern):
+            assignees = users
+            reviewers = users
+            break
+    
+    return assignees, reviewers
+
+# Get the list of changed files in the merge request
+changed_files = [change['new_path'] for change in merge_request.changes()['changes']]
+
+# Determine assignees and reviewers for the changed files
+assignees_set = set()
+reviewers_set = set()
+
+for file_path in changed_files:
+    assignees, reviewers = find_assignees_and_reviewers(file_path)
+    assignees_set.update(assignees)
+    reviewers_set.update(reviewers)
+
+# Get the user IDs for the assignees and reviewers
+assignee_ids = [gl.users.list(username=username)[0].id for username in assignees_set]
+reviewer_ids = [gl.users.list(username=username)[0].id for username in reviewers_set]
+
+# Assign assignees and reviewers to the merge request
+merge_request.assignee_ids = assignee_ids
+merge_request.reviewer_ids = reviewer_ids
+
+# Add labels
+merge_request.labels += [
+    'needreview',
+    'podman',
+    'systemd'
+]
+
+merge_request.save()
+
