@@ -1,0 +1,98 @@
+#!/bin/bash
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# Check if a filename was provided as an argument
+
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 README.md"
+    exit 1
+fi
+
+filename=$1
+
+# Check if the file exists
+if [ ! -f "$filename" ]; then
+    echo "File not found!"
+    exit 1
+fi
+
+# Temporary file to store the TOC
+toc_file=$(mktemp)
+temp_file=$(mktemp)
+
+# Function to generate TOC from headings, ignoring code blocks
+generate_toc() {
+    local inside_code_block=0
+    local toc_content=""
+    while IFS= read -r line; do
+        # Check for start or end of code block
+        if [[ $line =~ ^\`\`\` ]]; then
+            inside_code_block=$((1 - inside_code_block))
+        fi
+
+        # Process headings if not inside a code block
+        if [[ $inside_code_block -eq 0 && $line =~ ^(#+)\ (.+) ]]; then
+            local level=${#BASH_REMATCH[1]}
+            local title=${BASH_REMATCH[2]}
+            local slug
+            slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:] -' | tr ' ' '-')
+            indent=$(printf '   %.0s' $(seq 1 $level))
+            toc_content+="${indent}- [$title](#$slug)\n"
+        fi
+    done < "$filename"
+    echo -e "$toc_content"
+}
+
+# Generate TOC content
+toc_content=$(generate_toc)
+
+# If TOC content is empty, exit without making changes
+if [ -z "$toc_content" ]; then
+    echo "No headings found to generate TOC."
+    rm -f "$toc_file" "$temp_file"
+    exit 0
+fi
+
+# Write TOC to temporary file
+{
+    echo "<!-- TOC START -->"
+    echo ""
+    echo -e "$toc_content"
+    echo ""
+    echo "<!-- TOC END -->"
+} > "$toc_file"
+
+# Replace existing TOC or add new TOC at the top
+if grep -q "<!-- TOC START -->" "$filename"; then
+    # Replace existing TOC
+    awk -v toc="$(cat "$toc_file")" '
+        BEGIN { in_toc = 0 }
+        /<!-- TOC START -->/ { in_toc = 1; print toc; next }
+        /<!-- TOC END -->/ { in_toc = 0; next }
+        !in_toc { print }
+    ' "$filename" > "$temp_file" && mv "$temp_file" "$filename"
+else
+    # Prepend TOC to the original file
+    cat "$toc_file" "$filename" > "$temp_file" && mv "$temp_file" "$filename"
+fi
+
+# Check if the TOC update made any changes
+if ! git diff --quiet "$filename"; then
+    echo "Error: The Table of Contents in $filename is outdated. Please update it manually."
+    rm -f "$toc_file"
+    exit 1
+fi
+
+# Remove the temporary files
+rm -f "$toc_file" "$temp_file"
+
