@@ -36,8 +36,9 @@ with open(codeowners_path, 'r') as file:
     lines = file.readlines()
 
 # Parse CODEOWNERS file
-codeowners_rules = {}
+codeowners_rules = []
 general_reviewers = []
+wildcard_reviewers = []
 
 is_general_reviewers = False
 
@@ -46,32 +47,57 @@ for line in lines:
     if line and not line.startswith('#'):
         if line.startswith('[') and 'General reviewers' in line:
             is_general_reviewers = True
+        elif line.startswith('['):
+            is_general_reviewers = False
         else:
             parts = line.split()
             pattern = parts[0]
-            users = parts[1:]
+            users = [user.lstrip('@') for user in parts[1:]]  # Remove '@' from usernames
             if is_general_reviewers:
                 general_reviewers.extend(users)
+            elif pattern == '*':
+                wildcard_reviewers = users
             else:
-                codeowners_rules[pattern] = users
+                codeowners_rules.append((pattern, users))
+
+print("Codeowners rules:", codeowners_rules)
+print("General reviewers:", general_reviewers)
+print("Wildcard reviewers:", wildcard_reviewers)
 
 default_assignee = "unused"
 
 # Function to find assignees and reviewers based on the file path
 def find_assignees_and_reviewers(file_path):
-    assignees = [default_assignee]
-    reviewers = general_reviewers[:]
-    
-    for pattern, users in codeowners_rules.items():
+    assignees = set()
+    reviewers = set()
+    matched_specific_pattern = False
+
+    print(f"Checking file: {file_path}")
+
+    # Check for specific patterns first
+    for pattern, users in codeowners_rules:
         if fnmatch.fnmatch(file_path, pattern):
-            assignees = users
-            reviewers = users
-            break
-    
-    return assignees, reviewers
+            print(f"Pattern matched: {pattern} for file: {file_path}")
+            assignees.update(users)
+            reviewers.update(users)
+            matched_specific_pattern = True
+
+    # If no specific pattern matched, use wildcard reviewers
+    if not matched_specific_pattern:
+        print(f"No specific pattern matched for file: {file_path}. Using wildcard reviewers.")
+        reviewers.update(wildcard_reviewers)
+
+    # If still no reviewers and no specific pattern was matched, use general reviewers
+    if not reviewers and not matched_specific_pattern:
+        print(f"No wildcard reviewers found for file: {file_path}. Using general reviewers.")
+        reviewers.update(general_reviewers)
+
+    print(f"File path: {file_path}, Assignees: {list(assignees)}, Reviewers: {list(reviewers)}")
+    return list(assignees), list(reviewers)
 
 # Get the list of changed files in the merge request
 changed_files = [change['new_path'] for change in merge_request.changes()['changes']]
+print("Changed files:", changed_files)
 
 # Determine assignees and reviewers for the changed files
 assignees_set = set()
@@ -79,12 +105,36 @@ reviewers_set = set()
 
 for file_path in changed_files:
     assignees, reviewers = find_assignees_and_reviewers(file_path)
+    print(f"File path: {file_path}, Assignees: {assignees}, Reviewers: {reviewers}")
     assignees_set.update(assignees)
     reviewers_set.update(reviewers)
 
+print("Assignees set:", assignees_set)
+print("Reviewers set:", reviewers_set)
+
 # Get the user IDs for the assignees and reviewers
-assignee_ids = [gl.users.list(username=username)[0].id for username in assignees_set]
-reviewer_ids = [gl.users.list(username=username)[0].id for username in reviewers_set]
+assignee_ids = []
+reviewer_ids = []
+
+for username in assignees_set:
+    if username != default_assignee:
+        users = gl.users.list(username=username)
+        print(f"Searching for user: {username}, Found: {users}")
+        if users:
+            assignee_ids.append(users[0].id)
+        else:
+            print(f"User not found: {username}")
+
+for username in reviewers_set:
+    users = gl.users.list(username=username)
+    print(f"Searching for user: {username}, Found: {users}")
+    if users:
+        reviewer_ids.append(users[0].id)
+    else:
+        print(f"User not found: {username}")
+
+print("Assignee IDs:", assignee_ids)
+print("Reviewer IDs:", reviewer_ids)
 
 # Assign assignees and reviewers to the merge request
 merge_request.assignee_ids = assignee_ids
@@ -92,9 +142,7 @@ merge_request.reviewer_ids = reviewer_ids
 
 # Add labels
 merge_request.labels += [
-    'needreview',
-    'podman',
-    'systemd'
+    'needreview'
 ]
 
 merge_request.save()
