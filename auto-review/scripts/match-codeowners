@@ -2,6 +2,11 @@ import os
 import gitlab
 import fnmatch
 
+# Constants
+REPLACE_UNUSED_WITH_GENERAL_REVIEWERS = True  # Set this to False to disable replacing 'unused' with general reviewers
+INCLUDE_MR_AUTHOR_AS_ASSIGNEE = True  # Set this to False to exclude the MR author as an assignee
+KEEP_EXISTING_ASSIGNEES_AND_REVIEWERS = True  # Set this to False to remove existing assignees and reviewers not in CODEOWNERS
+
 # Get the GitLab token from environment variables
 GITLAB_TOKEN = os.getenv('GITLAB_TOKEN')
 
@@ -45,7 +50,7 @@ is_general_reviewers = False
 for line in lines:
     line = line.strip()
     if line and not line.startswith('#'):
-        if line.startswith('[') and 'General reviewers' in line:
+        if 'General reviewers' in line and (line.startswith('[') or line.startswith('^[')):
             is_general_reviewers = True
         elif line.startswith('['):
             is_general_reviewers = False
@@ -65,6 +70,11 @@ print("General reviewers:", general_reviewers)
 print("Wildcard reviewers:", wildcard_reviewers)
 
 default_assignee = "unused"
+default_reviewer = "unused"
+
+# Get the MR author
+mr_author_username = merge_request.author['username']
+print(f"Merge request author: {mr_author_username}")
 
 # Function to find assignees and reviewers based on the file path
 def find_assignees_and_reviewers(file_path):
@@ -92,6 +102,14 @@ def find_assignees_and_reviewers(file_path):
         print(f"No wildcard reviewers found for file: {file_path}. Using general reviewers.")
         reviewers.update(general_reviewers)
 
+    # If no assignees found, use default assignee
+    if not assignees:
+        assignees.add(default_assignee)
+
+    # If no reviewers found, use default reviewer
+    if not reviewers:
+        reviewers.add(default_reviewer)
+
     print(f"File path: {file_path}, Assignees: {list(assignees)}, Reviewers: {list(reviewers)}")
     return list(assignees), list(reviewers)
 
@@ -109,21 +127,48 @@ for file_path in changed_files:
     assignees_set.update(assignees)
     reviewers_set.update(reviewers)
 
+# Add the MR author to the assignees if the constant is set to True
+if INCLUDE_MR_AUTHOR_AS_ASSIGNEE:
+    assignees_set.add(mr_author_username)
+
+# Ensure there is at least one assignee and it's not 'unused'
+if REPLACE_UNUSED_WITH_GENERAL_REVIEWERS and ('unused' in assignees_set or not assignees_set):
+    # Assign general reviewers as assignees if the 'unused' assignee is set
+    print(f"'unused' found in assignees. Using general reviewers as assignees: {general_reviewers}")
+    assignees_set.discard('unused')
+    assignees_set.update(general_reviewers)
+
+# Ensure there is at least one reviewer and it's not 'unused'
+if REPLACE_UNUSED_WITH_GENERAL_REVIEWERS and ('unused' in reviewers_set or not reviewers_set):
+    # Assign general reviewers as reviewers if the 'unused' reviewer is set
+    print(f"'unused' found in reviewers. Using general reviewers as reviewers: {general_reviewers}")
+    reviewers_set.discard('unused')
+    reviewers_set.update(general_reviewers)
+
 print("Assignees set:", assignees_set)
 print("Reviewers set:", reviewers_set)
+
+# Get the existing assignees and reviewers if the constant is set to True
+if KEEP_EXISTING_ASSIGNEES_AND_REVIEWERS:
+    existing_assignees = {assignee['username'] for assignee in merge_request.assignees}
+    existing_reviewers = {reviewer['username'] for reviewer in merge_request.reviewers}
+    assignees_set.update(existing_assignees)
+    reviewers_set.update(existing_reviewers)
+
+print("Final Assignees set:", assignees_set)
+print("Final Reviewers set:", reviewers_set)
 
 # Get the user IDs for the assignees and reviewers
 assignee_ids = []
 reviewer_ids = []
 
 for username in assignees_set:
-    if username != default_assignee:
-        users = gl.users.list(username=username)
-        print(f"Searching for user: {username}, Found: {users}")
-        if users:
-            assignee_ids.append(users[0].id)
-        else:
-            print(f"User not found: {username}")
+    users = gl.users.list(username=username)
+    print(f"Searching for user: {username}, Found: {users}")
+    if users:
+        assignee_ids.append(users[0].id)
+    else:
+        print(f"User not found: {username}")
 
 for username in reviewers_set:
     users = gl.users.list(username=username)
