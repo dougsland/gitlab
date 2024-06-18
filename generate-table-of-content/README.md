@@ -25,7 +25,9 @@ update_readme_toc:
        echo ""
        exit 1
      )
-  only:
-    changes:
-      - "**/README.md"
+  rules:
+    - changes:
+        paths:
+          - "**/README.md"
+      when: always
 ```
